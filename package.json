@@ -1,0 +1,9 @@
+{
+  "name": "livekit-mixer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minimal LiveKit room viewer/mixer, deployed on Netlify",
+  "dependencies": {
+    "livekit-server-sdk": "^2.9.2"
+  }
+}

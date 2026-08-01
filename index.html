@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>signal / room mixer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #0d1013;
+    --panel: #161a1f;
+    --panel-line: #262b32;
+    --text: #e8ecef;
+    --muted: #7a8390;
+    --accent: #5eead4;
+    --accent-dim: #2d5f57;
+    --danger: #f2637a;
+    --radius: 10px;
+  }
+  *{ box-sizing: border-box; }
+  html,body{ margin:0; height:100%; }
+  body{
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    display:flex;
+    flex-direction:column;
+    min-height:100vh;
+  }
+  header{
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--panel-line);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .brand{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:700;
+    font-size: 18px;
+    letter-spacing: -0.02em;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .brand .dot{
+    width:8px; height:8px; border-radius:50%;
+    background: var(--muted);
+    transition: background .2s, box-shadow .2s;
+  }
+  .brand .dot.live{
+    background: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-dim);
+  }
+  .conn-form{
+    display:flex;
+    gap:8px;
+    flex-wrap: wrap;
+    align-items:center;
+  }
+  input[type=text], input[type=url]{
+    background: var(--panel);
+    border: 1px solid var(--panel-line);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    padding: 8px 10px;
+    border-radius: var(--radius);
+    width: 150px;
+    outline: none;
+  }
+  input:focus{ border-color: var(--accent); }
+  button{
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    border: 1px solid var(--panel-line);
+    background: var(--panel);
+    color: var(--text);
+    padding: 8px 14px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  button:hover{ border-color: var(--accent); }
+  button:disabled{ opacity:.4; cursor: not-allowed; }
+  button.primary{ background: var(--accent); color:#0d1013; border-color: var(--accent); }
+  button.danger{ border-color: var(--danger); color: var(--danger); background: transparent; }
+
+  main{
+    flex:1;
+    padding: 18px;
+    display:flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  #status{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    min-height: 16px;
+  }
+  #grid{
+    flex:1;
+    display:grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 14px;
+    align-content: start;
+  }
+  .tile{
+    position: relative;
+    background: var(--panel);
+    border: 1px solid var(--panel-line);
+    border-radius: var(--radius);
+    overflow: hidden;
+    aspect-ratio: 4/3;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .tile.speaking{
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent), 0 0 20px -6px var(--accent);
+  }
+  .tile video{
+    width:100%; height:100%; object-fit: cover;
+    background:#000;
+    transform: scaleX(1);
+  }
+  .tile.mirrored video{ transform: scaleX(-1); }
+  .tile .label{
+    position:absolute; left:8px; bottom:8px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 11px;
+    background: rgba(13,16,19,0.7);
+    padding: 4px 8px;
+    border-radius: 6px;
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+  .tile .label .muted-icon{ color: var(--danger); }
+  .tile .placeholder{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Space Grotesk', sans-serif;
+    font-size: 28px;
+    font-weight:600;
+    color: var(--muted);
+    background: linear-gradient(160deg, #161a1f, #101316);
+  }
+  footer{
+    padding: 14px 18px;
+    border-top: 1px solid var(--panel-line);
+    display:flex;
+    gap: 10px;
+    justify-content:center;
+    flex-wrap: wrap;
+  }
+  footer button{ min-width: 96px; }
+  .hint{
+    color: var(--muted);
+    font-size: 12px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  @media (max-width: 560px){
+    input[type=text], input[type=url]{ width: 120px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><span class="dot" id="liveDot"></span> signal</div>
+  <form class="conn-form" id="connForm">
+    <input type="url" id="lkUrl" placeholder="wss://your-project.livekit.cloud" required>
+    <input type="text" id="roomName" placeholder="room name" value="main-room" required>
+    <input type="text" id="displayName" placeholder="your name" required>
+    <button type="submit" class="primary" id="connectBtn">connect</button>
+  </form>
+</header>
+
+<main>
+  <div id="status">not connected.</div>
+  <div id="grid"></div>
+</main>
+
+<footer id="controls" style="display:none">
+  <button id="micBtn">mute mic</button>
+  <button id="camBtn">stop camera</button>
+  <button id="flipBtn">flip camera</button>
+  <button id="disconnectBtn" class="danger">leave</button>
+</footer>
+
+<script src="https://unpkg.com/livekit-client@2/dist/livekit-client.umd.min.js"></script>
+<script>
+const { Room, RoomEvent, Track, createLocalTracks, VideoPresets } = LivekitClient;
+
+const grid = document.getElementById('grid');
+const statusEl = document.getElementById('status');
+const liveDot = document.getElementById('liveDot');
+const controls = document.getElementById('controls');
+const connForm = document.getElementById('connForm');
+const connectBtn = document.getElementById('connectBtn');
+
+let room = null;
+let facingMode = 'user';
+
+// remember the last-used connection details so the phone and desktop
+// don't need to be typed out every time
+for (const id of ['lkUrl', 'roomName', 'displayName']) {
+  const saved = localStorage.getItem(id);
+  if (saved) document.getElementById(id).value = saved;
+}
+
+function setStatus(msg) { statusEl.textContent = msg; }
+
+function tileIdFor(identity) { return `tile-${identity.replace(/[^a-zA-Z0-9_-]/g, '_')}`; }
+
+function ensureTile(identity, label, isLocal) {
+  let tile = document.getElementById(tileIdFor(identity));
+  if (tile) return tile;
+  tile = document.createElement('div');
+  tile.id = tileIdFor(identity);
+  tile.className = 'tile' + (isLocal ? ' mirrored' : '');
+  tile.innerHTML = `
+    <div class="placeholder">${(label || identity).slice(0,2).toUpperCase()}</div>
+    <video autoplay playsinline ${isLocal ? 'muted' : ''}></video>
+    <div class="label"><span class="name">${label || identity}</span></div>
+  `;
+  grid.appendChild(tile);
+  return tile;
+}
+
+function removeTile(identity) {
+  const tile = document.getElementById(tileIdFor(identity));
+  if (tile) tile.remove();
+}
+
+function attachTrack(track, identity, label, isLocal) {
+  const tile = ensureTile(identity, label, isLocal);
+  const placeholder = tile.querySelector('.placeholder');
+  if (track.kind === 'video') {
+    const videoEl = tile.querySelector('video');
+    track.attach(videoEl);
+    placeholder.style.display = 'none';
+  } else if (track.kind === 'audio' && !isLocal) {
+    track.attach(tile.querySelector('video')); // audio piggybacks on the video element
+  }
+}
+
+function setSpeaking(identity, speaking) {
+  const tile = document.getElementById(tileIdFor(identity));
+  if (tile) tile.classList.toggle('speaking', speaking);
+}
+
+async function connect(url, roomName, displayName) {
+  const identity = `${displayName}-${Math.random().toString(36).slice(2,7)}`;
+  setStatus('requesting token...');
+
+  const tokenRes = await fetch(`/api/token?room=${encodeURIComponent(roomName)}&identity=${encodeURIComponent(identity)}&name=${encodeURIComponent(displayName)}`);
+  if (!tokenRes.ok) {
+    const err = await tokenRes.json().catch(() => ({}));
+    throw new Error(err.error || 'failed to get token');
+  }
+  const { token } = await tokenRes.json();
+
+  room = new Room({ adaptiveStream: true, dynacast: true });
+
+  room.on(RoomEvent.TrackSubscribed, (track, pub, participant) => {
+    attachTrack(track, participant.identity, participant.name, false);
+  });
+  room.on(RoomEvent.TrackUnsubscribed, (track) => track.detach());
+  room.on(RoomEvent.ParticipantDisconnected, (participant) => removeTile(participant.identity));
+  room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
+    document.querySelectorAll('.tile.speaking').forEach(t => t.classList.remove('speaking'));
+    speakers.forEach(p => setSpeaking(p.identity, true));
+  });
+  room.on(RoomEvent.Disconnected, () => {
+    setStatus('disconnected.');
+    liveDot.classList.remove('live');
+    controls.style.display = 'none';
+    connForm.style.display = 'flex';
+    grid.innerHTML = '';
+  });
+
+  setStatus('connecting to room...');
+  await room.connect(url, token);
+
+  setStatus(`connected as ${displayName} in "${roomName}"`);
+  liveDot.classList.add('live');
+
+  ensureTile(identity, `${displayName} (you)`, true);
+  await room.localParticipant.setCameraEnabled(true, { facingMode });
+  await room.localParticipant.setMicrophoneEnabled(true);
+
+  room.localParticipant.videoTrackPublications.forEach(pub => {
+    if (pub.track) attachTrack(pub.track, identity, displayName, true);
+  });
+
+  // pick up anyone already in the room
+  room.remoteParticipants.forEach(participant => {
+    participant.trackPublications.forEach(pub => {
+      if (pub.track) attachTrack(pub.track, participant.identity, participant.name, false);
+    });
+  });
+
+  controls.style.display = 'flex';
+  connForm.style.display = 'none';
+}
+
+connForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const url = document.getElementById('lkUrl').value.trim();
+  const roomName = document.getElementById('roomName').value.trim();
+  const displayName = document.getElementById('displayName').value.trim();
+  localStorage.setItem('lkUrl', url);
+  localStorage.setItem('roomName', roomName);
+  localStorage.setItem('displayName', displayName);
+
+  connectBtn.disabled = true;
+  try {
+    await connect(url, roomName, displayName);
+  } catch (err) {
+    setStatus(`error: ${err.message}`);
+  } finally {
+    connectBtn.disabled = false;
+  }
+});
+
+document.getElementById('micBtn').addEventListener('click', async () => {
+  const enabled = room.localParticipant.isMicrophoneEnabled;
+  await room.localParticipant.setMicrophoneEnabled(!enabled);
+  document.getElementById('micBtn').textContent = enabled ? 'unmute mic' : 'mute mic';
+});
+
+document.getElementById('camBtn').addEventListener('click', async () => {
+  const enabled = room.localParticipant.isCameraEnabled;
+  await room.localParticipant.setCameraEnabled(!enabled, { facingMode });
+  document.getElementById('camBtn').textContent = enabled ? 'start camera' : 'stop camera';
+});
+
+document.getElementById('flipBtn').addEventListener('click', async () => {
+  facingMode = facingMode === 'user' ? 'environment' : 'user';
+  if (room && room.localParticipant.isCameraEnabled) {
+    await room.localParticipant.setCameraEnabled(true, { facingMode });
+  }
+});
+
+document.getElementById('disconnectBtn').addEventListener('click', async () => {
+  if (room) await room.disconnect();
+});
+</script>
+</body>
+</html>
