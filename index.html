@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>133bpm</title>
+  <title>signal / room mixer</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
@@ -246,10 +246,8 @@
 <body>
 
   <header>
-    <div class="brand"><span class="dot" id="liveDot"></span> 133bpm</div>
+    <div class="brand"><span class="dot" id="liveDot"></span> signal</div>
     <form class="conn-form" id="connForm">
-      <input type="url" id="lkUrl" placeholder="wss://your-project.livekit.cloud" required>
-      <input type="text" id="roomName" placeholder="room name" value="main-room" required>
       <input type="text" id="displayName" placeholder="your name" required>
       <button type="submit" class="primary" id="connectBtn">connect</button>
     </form>
@@ -283,15 +281,15 @@
     const connForm = document.getElementById('connForm');
     const connectBtn = document.getElementById('connectBtn');
 
+    const LK_URL = 'wss://project-133bpm-s6d3ajm5.livekit.cloud';
+    const ROOM_NAME = 'brilliant-party-moments';
+
     let room = null;
     let facingMode = 'user';
 
-    // remember the last-used connection details so the phone and desktop
-    // don't need to be typed out every time
-    for (const id of ['lkUrl', 'roomName', 'displayName']) {
-      const saved = localStorage.getItem(id);
-      if (saved) document.getElementById(id).value = saved;
-    }
+    // remember the last-used display name so it doesn't need to be typed out every time
+    const savedName = localStorage.getItem('displayName');
+    if (savedName) document.getElementById('displayName').value = savedName;
 
     function setStatus(msg) { statusEl.textContent = msg; }
 
@@ -334,11 +332,11 @@
       if (tile) tile.classList.toggle('speaking', speaking);
     }
 
-    async function connect(url, roomName, displayName) {
+    async function connect(displayName) {
       const identity = `${displayName}-${Math.random().toString(36).slice(2, 7)}`;
       setStatus('requesting token...');
 
-      const tokenRes = await fetch(`/api/token?room=${encodeURIComponent(roomName)}&identity=${encodeURIComponent(identity)}&name=${encodeURIComponent(displayName)}`);
+      const tokenRes = await fetch(`/api/token?room=${encodeURIComponent(ROOM_NAME)}&identity=${encodeURIComponent(identity)}&name=${encodeURIComponent(displayName)}`);
       if (!tokenRes.ok) {
         const err = await tokenRes.json().catch(() => ({}));
         throw new Error(err.error || 'failed to get token');
@@ -365,9 +363,9 @@
       });
 
       setStatus('connecting to room...');
-      await room.connect(url, token);
+      await room.connect(LK_URL, token);
 
-      setStatus(`connected as ${displayName} in "${roomName}"`);
+      setStatus(`connected as ${displayName} in "${ROOM_NAME}"`);
       liveDot.classList.add('live');
 
       ensureTile(identity, `${displayName} (you)`, true);
@@ -391,16 +389,12 @@
 
     connForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const url = document.getElementById('lkUrl').value.trim();
-      const roomName = document.getElementById('roomName').value.trim();
       const displayName = document.getElementById('displayName').value.trim();
-      localStorage.setItem('lkUrl', url);
-      localStorage.setItem('roomName', roomName);
       localStorage.setItem('displayName', displayName);
 
       connectBtn.disabled = true;
       try {
-        await connect(url, roomName, displayName);
+        await connect(displayName);
       } catch (err) {
         setStatus(`error: ${err.message}`);
       } finally {
