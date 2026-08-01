@@ -247,10 +247,7 @@
 
   <header>
     <div class="brand"><span class="dot" id="liveDot"></span> 133bpm</div>
-    <form class="conn-form" id="connForm">
-      <input type="text" id="displayName" placeholder="your name" required>
-      <button type="submit" class="primary" id="connectBtn">connect</button>
-    </form>
+    <button type="button" class="primary" id="connectBtn">connect</button>
   </header>
 
   <main>
@@ -278,7 +275,6 @@
     const statusEl = document.getElementById('status');
     const liveDot = document.getElementById('liveDot');
     const controls = document.getElementById('controls');
-    const connForm = document.getElementById('connForm');
     const connectBtn = document.getElementById('connectBtn');
 
     const LK_URL = 'wss://project-133bpm-s6d3ajm5.livekit.cloud';
@@ -287,9 +283,9 @@
     let room = null;
     let facingMode = 'user';
 
-    // remember the last-used display name so it doesn't need to be typed out every time
-    const savedName = localStorage.getItem('displayName');
-    if (savedName) document.getElementById('displayName').value = savedName;
+    function randomId() {
+      return Math.random().toString(36).slice(2, 10);
+    }
 
     function setStatus(msg) { statusEl.textContent = msg; }
 
@@ -332,11 +328,11 @@
       if (tile) tile.classList.toggle('speaking', speaking);
     }
 
-    async function connect(displayName) {
-      const identity = `${displayName}-${Math.random().toString(36).slice(2, 7)}`;
+    async function connect() {
+      const identity = randomId();
       setStatus('requesting token...');
 
-      const tokenRes = await fetch(`/api/token?room=${encodeURIComponent(ROOM_NAME)}&identity=${encodeURIComponent(identity)}&name=${encodeURIComponent(displayName)}`);
+      const tokenRes = await fetch(`/api/token?room=${encodeURIComponent(ROOM_NAME)}&identity=${encodeURIComponent(identity)}`);
       if (!tokenRes.ok) {
         const err = await tokenRes.json().catch(() => ({}));
         throw new Error(err.error || 'failed to get token');
@@ -358,22 +354,22 @@
         setStatus('disconnected.');
         liveDot.classList.remove('live');
         controls.style.display = 'none';
-        connForm.style.display = 'flex';
+        connectBtn.style.display = 'inline-block';
         grid.innerHTML = '';
       });
 
       setStatus('connecting to room...');
       await room.connect(LK_URL, token);
 
-      setStatus(`connected as ${displayName} in "${ROOM_NAME}"`);
+      setStatus(`connected in "${ROOM_NAME}"`);
       liveDot.classList.add('live');
 
-      ensureTile(identity, `${displayName} (you)`, true);
+      ensureTile(identity, 'you', true);
       await room.localParticipant.setCameraEnabled(true, { facingMode });
       await room.localParticipant.setMicrophoneEnabled(true);
 
       room.localParticipant.videoTrackPublications.forEach(pub => {
-        if (pub.track) attachTrack(pub.track, identity, displayName, true);
+        if (pub.track) attachTrack(pub.track, identity, 'you', true);
       });
 
       // pick up anyone already in the room
@@ -384,17 +380,13 @@
       });
 
       controls.style.display = 'flex';
-      connForm.style.display = 'none';
+      connectBtn.style.display = 'none';
     }
 
-    connForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const displayName = document.getElementById('displayName').value.trim();
-      localStorage.setItem('displayName', displayName);
-
+    connectBtn.addEventListener('click', async () => {
       connectBtn.disabled = true;
       try {
-        await connect(displayName);
+        await connect();
       } catch (err) {
         setStatus(`error: ${err.message}`);
       } finally {
