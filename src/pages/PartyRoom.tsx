@@ -1,5 +1,6 @@
 import { ParticipantTile } from "../components/ParticipantTile";
 import { useLiveKitRoom } from "../hooks/useLiveKitRoom";
+import { HORN_EVENT_TYPE, HORN_TOPIC } from "../lib/config";
 import "../App.css";
 
 export default function PartyRoom() {
@@ -13,9 +14,14 @@ export default function PartyRoom() {
     toggleCam,
     flipCamera,
     connect,
+    sendData,
   } = useLiveKitRoom({ autoConnect: true });
 
   const isErrored = status.startsWith("error:");
+
+  const honk = () => {
+    sendData({ type: HORN_EVENT_TYPE }, { topic: HORN_TOPIC });
+  };
 
   return (
     <div className="page">
@@ -39,6 +45,14 @@ export default function PartyRoom() {
             <ParticipantTile key={tile.identity} {...tile} />
           ))}
         </div>
+        <button
+          type="button"
+          className="primary horn-button"
+          disabled={!connected}
+          onClick={honk}
+        >
+          🎉 honk the horn
+        </button>
       </main>
 
       {/* Viewers watch silently by default. These let someone "call in" by

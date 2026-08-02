@@ -7,6 +7,10 @@ export const ROOM_NAME = 'best-party-moments';
 // with the same identity, so only run /host in one tab/device at a time.
 export const HOST_IDENTITY = 'host';
 
+// Data-track event used to trigger the party horn on /horn.
+export const HORN_EVENT_TYPE = 'HORN';
+export const HORN_TOPIC = 'horn';
+
 export function randomIdentity(): string {
   return Math.random().toString(36).slice(2, 10);
 }

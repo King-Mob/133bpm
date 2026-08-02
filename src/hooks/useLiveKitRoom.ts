@@ -17,10 +17,19 @@ export interface UseLiveKitRoomOptions {
     autoEnableCamera?: boolean;
     /** Enable microphone the moment the room connects. */
     autoEnableMicrophone?: boolean;
+    /** Called whenever a JSON data-track message is received from any participant. */
+    onDataReceived?: (payload: unknown, participant?: RemoteParticipant) => void;
 }
 
 export function useLiveKitRoom(options: UseLiveKitRoomOptions = {}) {
-    const { identity: fixedIdentity, displayName, autoConnect, autoEnableCamera, autoEnableMicrophone } = options;
+    const {
+        identity: fixedIdentity,
+        displayName,
+        autoConnect,
+        autoEnableCamera,
+        autoEnableMicrophone,
+        onDataReceived,
+    } = options;
 
     const [status, setStatus] = useState('not connected.');
     const [connected, setConnected] = useState(false);
@@ -119,6 +128,16 @@ export function useLiveKitRoom(options: UseLiveKitRoomOptions = {}) {
                 }));
             });
 
+            room.on(RoomEvent.DataReceived, (payload: Uint8Array, participant?: RemoteParticipant) => {
+                if (!onDataReceived) return;
+                try {
+                    const text = new TextDecoder().decode(payload);
+                    onDataReceived(JSON.parse(text), participant);
+                } catch {
+                    // ignore malformed / non-JSON data packets
+                }
+            });
+
             room.on(RoomEvent.Disconnected, () => {
                 setStatus('disconnected.');
                 setConnected(false);
@@ -168,7 +187,7 @@ export function useLiveKitRoom(options: UseLiveKitRoomOptions = {}) {
         } finally {
             setConnecting(false);
         }
-    }, [fixedIdentity, displayName, autoEnableCamera, autoEnableMicrophone, upsertTile]);
+    }, [fixedIdentity, displayName, autoEnableCamera, autoEnableMicrophone, onDataReceived, upsertTile]);
 
     const toggleMic = useCallback(async () => {
         const room = roomRef.current;
@@ -198,6 +217,13 @@ export function useLiveKitRoom(options: UseLiveKitRoomOptions = {}) {
         await roomRef.current?.disconnect();
     }, []);
 
+    const sendData = useCallback(async (data: unknown, options?: { topic?: string }) => {
+        const room = roomRef.current;
+        if (!room) return;
+        const bytes = new TextEncoder().encode(JSON.stringify(data));
+        await room.localParticipant.publishData(bytes, { reliable: true, topic: options?.topic });
+    }, []);
+
     // auto-connect once per mounted instance; the ref guard also protects against
     // React StrictMode's dev-only double-invoke of effects
     useEffect(() => {
@@ -224,6 +250,7 @@ export function useLiveKitRoom(options: UseLiveKitRoomOptions = {}) {
         tiles,
         connect,
         disconnect,
+        sendData,
         toggleMic,
         toggleCam,
         flipCamera,
