@@ -3,7 +3,7 @@ import { useLiveKitRoom } from "../hooks/useLiveKitRoom";
 import { HORN_EVENT_TYPE, HORN_TOPIC } from "../lib/config";
 import "../App.css";
 
-export default function PartyRoom() {
+export default function Guest() {
   const {
     status,
     connected,
