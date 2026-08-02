@@ -1,39 +1,48 @@
 import { ParticipantTile } from "../components/ParticipantTile";
 import { useLiveKitRoom } from "../hooks/useLiveKitRoom";
+import { HOST_IDENTITY } from "../lib/config";
 import "../App.css";
 
-export default function PartyRoom() {
+export default function Host() {
   const {
     status,
     connected,
-    tiles,
+    connecting,
     micEnabled,
     camEnabled,
+    tiles,
+    connect,
+    disconnect,
     toggleMic,
     toggleCam,
     flipCamera,
-    connect,
-  } = useLiveKitRoom({ autoConnect: true });
-
-  const isErrored = status.startsWith("error:");
+  } = useLiveKitRoom({
+    identity: HOST_IDENTITY,
+    displayName: "Host",
+    autoEnableCamera: true,
+    autoEnableMicrophone: true,
+  });
 
   return (
     <div className="page">
       <header>
         <div className="brand">
-          <span className={`dot${connected ? " live" : ""}`} /> 133bpm
+          <span className={`dot${connected ? " live" : ""}`} /> 133bpm — host
         </div>
+        {!connected && (
+          <button
+            type="button"
+            className="primary"
+            disabled={connecting}
+            onClick={connect}
+          >
+            {connecting ? "going live..." : "go live"}
+          </button>
+        )}
       </header>
 
       <main>
-        <div className="status">
-          {status}
-          {isErrored && (
-            <button type="button" onClick={connect} style={{ marginLeft: 8 }}>
-              retry
-            </button>
-          )}
-        </div>
+        <div className="status">{status}</div>
         <div className="grid">
           {Array.from(tiles.values()).map((tile) => (
             <ParticipantTile key={tile.identity} {...tile} />
@@ -41,19 +50,19 @@ export default function PartyRoom() {
         </div>
       </main>
 
-      {/* Viewers watch silently by default. These let someone "call in" by
-          turning on their own mic/camera once invited. Remove this footer
-          entirely if viewers should never be able to publish. */}
       {connected && (
         <footer>
           <button type="button" onClick={toggleMic}>
-            {micEnabled ? "mute mic" : "call in (unmute mic)"}
+            {micEnabled ? "mute mic" : "unmute mic"}
           </button>
           <button type="button" onClick={toggleCam}>
-            {camEnabled ? "stop camera" : "show my camera"}
+            {camEnabled ? "stop camera" : "start camera"}
           </button>
           <button type="button" onClick={flipCamera}>
             flip camera
+          </button>
+          <button type="button" className="danger" onClick={disconnect}>
+            end broadcast
           </button>
         </footer>
       )}

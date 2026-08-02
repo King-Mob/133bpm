@@ -1,12 +1,12 @@
-import { Route, Routes } from 'react-router-dom';
-import PartyRoom from './pages/PartyRoom';
+import { Route, Routes } from "react-router-dom";
+import PartyRoom from "./pages/PartyRoom";
+import Host from "./pages/Host";
 
 export default function App() {
   return (
     <Routes>
       <Route path="/" element={<PartyRoom />} />
-      {/* add more routes here, e.g.: */}
-      {/* <Route path="/about" element={<About />} /> */}
+      <Route path="/host" element={<Host />} />
     </Routes>
   );
 }
