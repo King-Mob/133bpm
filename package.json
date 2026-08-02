@@ -1,9 +1,27 @@
 {
-  "name": "livekit-mixer",
-  "version": "1.0.0",
+  "name": "temp",
   "private": true,
-  "description": "Minimal LiveKit room viewer/mixer, deployed on Netlify",
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview"
+  },
   "dependencies": {
-    "livekit-server-sdk": "^2.9.2"
+    "livekit-server-sdk": "^2.9.2",
+    "livekit-client": "^2.21.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "oxlint": "^1.75.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.0"
   }
 }
