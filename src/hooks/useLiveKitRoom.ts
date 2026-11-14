@@ -37,9 +37,14 @@ export function useLiveKitRoom(options: UseLiveKitRoomOptions = {}) {
     const [micEnabled, setMicEnabled] = useState(false);
     const [camEnabled, setCamEnabled] = useState(false);
     const [tiles, setTiles] = useState<Map<string, TileState>>(new Map());
+    // Identities of everyone currently in the room (local + remote), tracked
+    // separately from tiles: silent viewers publish nothing, so they never get
+    // a tile, but pages like the character arbiter still need to see them.
+    const [participantIds, setParticipantIds] = useState<Set<string>>(new Set());
 
     const roomRef = useRef<Room | null>(null);
     const localIdentityRef = useRef<string | null>(null);
+    const [myIdentity, setMyIdentity] = useState<string | null>(null);
     const facingModeRef = useRef<FacingMode>('user');
     const autoConnectedRef = useRef(false);
 
@@ -62,10 +67,11 @@ export function useLiveKitRoom(options: UseLiveKitRoomOptions = {}) {
     const connect = useCallback(async () => {
         if (roomRef.current) return; // already connecting/connected — avoid duplicate rooms
         setConnecting(true);
-        setStatus('requesting token...');
+        let room: Room | null = null;
         try {
             const identity = fixedIdentity ?? randomIdentity();
             localIdentityRef.current = identity;
+            setMyIdentity(identity);
 
             const params = new URLSearchParams({ room: ROOM_NAME, identity });
             if (displayName) params.set('name', displayName);
@@ -76,8 +82,7 @@ export function useLiveKitRoom(options: UseLiveKitRoomOptions = {}) {
                 throw new Error(err.error ?? 'failed to get token');
             }
             const { token } = await tokenRes.json();
-
-            const room = new Room({ adaptiveStream: true, dynacast: true });
+            room = new Room({ adaptiveStream: true, dynacast: true });
             roomRef.current = room;
 
             room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
@@ -95,7 +100,16 @@ export function useLiveKitRoom(options: UseLiveKitRoomOptions = {}) {
                 }));
             });
 
+            room.on(RoomEvent.ParticipantConnected, (participant: RemoteParticipant) => {
+                setParticipantIds((prev) => new Set(prev).add(participant.identity));
+            });
+
             room.on(RoomEvent.ParticipantDisconnected, (participant: RemoteParticipant) => {
+                setParticipantIds((prev) => {
+                    const next = new Set(prev);
+                    next.delete(participant.identity);
+                    return next;
+                });
                 setTiles((prev) => {
                     const next = new Map(prev);
                     next.delete(participant.identity);
@@ -137,13 +151,18 @@ export function useLiveKitRoom(options: UseLiveKitRoomOptions = {}) {
                     // ignore malformed / non-JSON data packets
                 }
             });
-
             room.on(RoomEvent.Disconnected, () => {
+                // Only tear down state if THIS room is still the active one. Under
+                // StrictMode the first mount's room can disconnect after the second
+                // mount already connected; nulling the shared ref then would orphan
+                // the live room and silently kill every sendData call.
+                if (roomRef.current !== room) return;
                 setStatus('disconnected.');
                 setConnected(false);
                 setMicEnabled(false);
                 setCamEnabled(false);
                 setTiles(new Map());
+                setParticipantIds(new Set());
                 roomRef.current = null;
             });
 
@@ -169,8 +188,10 @@ export function useLiveKitRoom(options: UseLiveKitRoomOptions = {}) {
                 setMicEnabled(true);
             }
 
-            // pick up anyone already in the room
+            // pick up anyone already in the room (with or without published tracks)
+            const ids = new Set<string>([identity]);
             room.remoteParticipants.forEach((participant) => {
+                ids.add(participant.identity);
                 participant.trackPublications.forEach((pub) => {
                     const track = pub.track;
                     if (!track) return;
@@ -181,9 +202,14 @@ export function useLiveKitRoom(options: UseLiveKitRoomOptions = {}) {
                     }));
                 });
             });
+            setParticipantIds(ids);
         } catch (err) {
             setStatus(`error: ${(err as Error).message}`);
-            roomRef.current = null;
+            // Only clear the ref if it still points at OUR room — a later mount may
+            // have already connected successfully (StrictMode double-mount races).
+            if (roomRef.current === room) {
+                roomRef.current = null;
+            }
         } finally {
             setConnecting(false);
         }
@@ -224,14 +250,18 @@ export function useLiveKitRoom(options: UseLiveKitRoomOptions = {}) {
         await room.localParticipant.publishData(bytes, { reliable: true, topic: options?.topic });
     }, []);
 
-    // auto-connect once per mounted instance; the ref guard also protects against
-    // React StrictMode's dev-only double-invoke of effects
+    // auto-connect once per mounted instance; the cleanup resets the ref so
+    // React StrictMode's dev-only double-invoke connects on the second mount.
     useEffect(() => {
-        if (!autoConnect || autoConnectedRef.current) return;
+        if (!autoConnect) return;
+        if (autoConnectedRef.current) return;
         autoConnectedRef.current = true;
         connect();
         // connect() is stable-ish via useCallback; we only want this to fire on mount
         // eslint-disable-next-line react-hooks/exhaustive-deps
+        return () => {
+            autoConnectedRef.current = false;
+        };
     }, [autoConnect]);
 
     // always let go of the camera/mic + socket if the component unmounts
@@ -248,6 +278,8 @@ export function useLiveKitRoom(options: UseLiveKitRoomOptions = {}) {
         micEnabled,
         camEnabled,
         tiles,
+        participantIds,
+        myIdentity,
         connect,
         disconnect,
         sendData,

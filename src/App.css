@@ -18,6 +18,7 @@ html,
 body {
   margin: 0;
   height: 100%;
+  background: black;
 }
 
 .page {
@@ -224,4 +225,12 @@ footer button {
 
 .horn-image.honking {
   transform: scale(1.5) rotate(-6deg);
+}
+
+/* Character Page */
+
+#character-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
