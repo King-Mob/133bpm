@@ -24,11 +24,8 @@ export default function Guest() {
     connected,
     tiles,
     micEnabled,
-    camEnabled,
     myIdentity,
     toggleMic,
-    toggleCam,
-    flipCamera,
     connect,
     sendData,
   } = useLiveKitRoom({
