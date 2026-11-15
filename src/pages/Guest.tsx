@@ -68,7 +68,8 @@ export default function Guest() {
     },
   });
 
-  const isMine = claim !== null && myIdentity !== null && claim.identity === myIdentity;
+  const isMine =
+    claim !== null && myIdentity !== null && claim.identity === myIdentity;
   const taken = claim !== null;
 
   const claimCharacter = useCallback(async () => {
@@ -98,12 +99,6 @@ export default function Guest() {
 
   return (
     <div className="page">
-      <header>
-        <div className="brand">
-          <span className={`dot${connected ? " live" : ""}`} /> 133bpm
-        </div>
-      </header>
-
       <main>
         <div className="status">
           {status}
@@ -144,23 +139,6 @@ export default function Guest() {
           {isMine ? "release character" : "be the character"}
         </button>
       </main>
-
-      {/* Viewers watch silently by default. These let someone "call in" by
-          turning on their own mic/camera once invited. Remove this footer
-          entirely if viewers should never be able to publish. */}
-      {connected && !isMine && (
-        <footer>
-          <button type="button" onClick={toggleMic}>
-            {micEnabled ? "mute mic" : "call in (unmute mic)"}
-          </button>
-          <button type="button" onClick={toggleCam}>
-            {camEnabled ? "stop camera" : "show my camera"}
-          </button>
-          <button type="button" onClick={flipCamera}>
-            flip camera
-          </button>
-        </footer>
-      )}
     </div>
   );
 }
