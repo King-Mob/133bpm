@@ -70,12 +70,22 @@ export default function Guest() {
   const taken = claim !== null;
 
   const claimCharacter = useCallback(async () => {
+    // Publish the mic BEFORE claiming: arbitration answers in milliseconds and
+    // the character page swaps to the claimant's track as soon as it appears,
+    // while the mic-permission prompt can stall publication for seconds — or
+    // deny it outright. Claiming first yielded "live as guest" with no audio.
+    if (!micEnabled) {
+      try {
+        await toggleMic();
+      } catch (e) {
+        console.error("Microphone unavailable — character not claimed", e);
+        return;
+      }
+    }
     await sendData(
       { type: CHARACTER_EVENT.CLAIM, name: "guest" },
       { topic: CHARACTER_TOPIC },
     );
-    // Optimistically unmute; the character page confirms via CLAIMED.
-    if (!micEnabled) await toggleMic();
   }, [sendData, micEnabled, toggleMic]);
 
   const releaseCharacter = useCallback(async () => {

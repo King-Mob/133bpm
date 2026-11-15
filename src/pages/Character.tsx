@@ -74,6 +74,7 @@ export default function Character() {
   const [micState, setMicState] = useState<
     "idle" | "starting" | "on" | "error"
   >("idle");
+  const [ctxSuspended, setCtxSuspended] = useState(false);
   const [errorText, setErrorText] = useState("");
   const lipsRef = useRef<HTMLImageElement>(null);
 
@@ -85,9 +86,11 @@ export default function Character() {
     source: MediaStreamAudioSourceNode | null;
     node: HeadAudio;
     raf: number;
+    playEl: HTMLAudioElement | null;
   } | null>(null);
 
   const teardownAudio = useCallback(() => {
+    setCtxSuspended(false);
     const audio = audioRef.current;
     if (!audio) return;
     audioRef.current = null;
@@ -104,9 +107,35 @@ export default function Character() {
     setMicState("idle");
   }, [teardownAudio]);
 
+  // Unlock a gesture-blocked AudioContext (see buildGraph): resume() only
+  // succeeds inside a user gesture, hence the click handler.
+  const resumeAudio = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const { ctx } = audio;
+    void ctx.resume()
+      .then(() => {
+        if (audioRef.current?.ctx === ctx) setCtxSuspended(ctx.state !== "running");
+      })
+      .catch(() => {});
+  }, []);
+
   // Builds the worklet graph on an existing AudioContext and starts the rAF
   // loop. Returns the node; source wiring is up to the caller (mic vs remote).
   const buildGraph = useCallback(async (ctx: AudioContext) => {
+    // Autoplay policy: a context created without a user gesture (the remote
+    // claimant path never has one) starts suspended, and resume() stays
+    // pending until a gesture arrives. Build the graph anyway and surface the
+    // blocked state so the page can show an unlock control instead of
+    // silently frozen lips.
+    if (ctx.state !== "running") {
+      setCtxSuspended(true);
+      void ctx.resume()
+        .then(() => {
+          if (ctx.state === "running") setCtxSuspended(false);
+        })
+        .catch(() => {});
+    }
     await ctx.audioWorklet.addModule(HEADAUDIO_WORKLET_URL);
     const node = new HeadAudio(ctx, {
       visemeMinMs: 80,
@@ -132,6 +161,7 @@ export default function Character() {
 
     let level = 0;
     let last = performance.now();
+    let lastLog = 0;
     const tick = (now: number) => {
       const dt = Math.min(100, now - last);
       last = now;
@@ -141,12 +171,22 @@ export default function Character() {
       // node ramps outgoing/incoming weights simultaneously — averaging dilutes
       // every peak. Take the max scaled weight.
       let target = 0;
+      let dominant = "viseme_sil";
       for (const key in visemes) {
-        if (visemes[key] > target) target = visemes[key];
+        if (visemes[key] > target) {
+          target = visemes[key];
+          dominant = key;
+        }
       }
 
-      if (now % 10 === 0) {
-        console.log(visemes);
+      // Diagnostics: once per second, log context state and the dominant
+      // viseme so silent-lips failures show up in the console.
+      if (now - lastLog >= 1000) {
+        lastLog = now;
+        console.log(
+          `[character] ctx=${ctx.state} dominant=${dominant} level=${level.toFixed(2)}`,
+          { ...visemes },
+        );
       }
 
       level += (target - level) * (target > level ? 0.4 : 0.2);
@@ -157,8 +197,16 @@ export default function Character() {
       const audio = audioRef.current;
       if (audio) audio.raf = requestAnimationFrame(tick);
     };
-    audioRef.current = { ctx, stream: null, source: null, node, raf: 0 };
-    audioRef.current.raf = requestAnimationFrame(tick);
+    const audio: NonNullable<typeof audioRef.current> = {
+      ctx,
+      stream: null,
+      source: null,
+      node,
+      raf: 0,
+      playEl: null,
+    };
+    audioRef.current = audio;
+    audio.raf = requestAnimationFrame(tick);
     return node;
   }, [teardownAudio]);
 
@@ -193,7 +241,19 @@ export default function Character() {
     : undefined;
 
   useEffect(() => {
-    if (!claim || !claimantTrack || claimantTrack.mediaStreamTrack.readyState !== "live") return;
+    if (!claim || !claimantTrack) {
+      // Claim gone or the claimant hasn't published audio yet. Tear down any
+      // graph left over from a previous claimant so its worklet doesn't keep
+      // running neural inference on silence.
+      teardownAudio();
+      return;
+    }
+    if (claimantTrack.mediaStreamTrack.readyState !== "live") {
+      console.warn(
+        `[character] claimant track not live: readyState=${claimantTrack.mediaStreamTrack.readyState}`,
+      );
+      return;
+    }
     let cancelled = false;
 
     (async () => {
@@ -208,9 +268,34 @@ export default function Character() {
           return;
         }
         const remoteStream = new MediaStream([claimantTrack.mediaStreamTrack]);
+        // Chromium pulls remote WebRTC audio through the playout pipeline: with
+        // no consumer attached to an audio element, the decoder never starts
+        // and every WebAudio consumer (including HeadAudio) sees silence.
+        // HeadAudio has zero outputs, so it can't be the pull — the muted
+        // element is the demand that starts decode. It doubles as the audience
+        // feed: whatever captures this page picks up the claimant's voice.
+        const playEl = document.createElement("audio");
+        playEl.muted = true; // muted autoplay is allowed without a gesture
+        playEl.autoplay = true;
+        playEl.srcObject = remoteStream;
+        playEl.style.display = "none";
+        document.body.appendChild(playEl);
+        await playEl.play().catch(() => {
+          // Blocked (unmuted-policy edge): resumeAudio retries on gesture.
+        });
+        if (cancelled || audioRef.current === null) {
+          playEl.remove();
+          teardownAudio();
+          return;
+        }
+        audioRef.current.playEl = playEl;
         const source = ctx.createMediaStreamSource(remoteStream);
         source.connect(node);
         audioRef.current.source = source;
+        const mt = claimantTrack.mediaStreamTrack;
+        console.log(
+          `[character] claimant audio attached: id=${mt.id} readyState=${mt.readyState} muted=${mt.muted} ctx=${ctx.state}`,
+        );
       } catch (e) {
         console.error("Failed to feed claimant audio", e);
         teardownAudio();
@@ -362,6 +447,11 @@ export default function Character() {
         )}
         {micState === "error" && (
           <span className="status">Mic failed: {errorText}</span>
+        )}
+        {ctxSuspended && (
+          <button type="button" className="primary" onClick={resumeAudio}>
+            enable audio
+          </button>
         )}
       </div>
     </div>
